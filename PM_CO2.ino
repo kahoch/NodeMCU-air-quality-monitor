@@ -150,11 +150,11 @@ int aqipm25(int t){
 	else return 400 + (t - 350) * 100 / 150; 
 }
 int aqipm10(int t){
-  if (t<= 54) return t * 50 / 12;
-  else if (t <= 154)  return 50 + (t - 54) * 50 / 54;
+  if (t<= 54) return t * 50 / 54;
+  else if (t <= 154)  return 50 + (t - 54) * 50 / 100;
   else if (t <= 254)  return 100 + (t - 154) * 50 / 100;
   else if (t <= 354)  return 150 + (t - 254) * 50 / 100;
-  else if (t <= 424)  return 200 + (t - 354) * 100 / 100;
+  else if (t <= 424)  return 200 + (t - 354) * 100 / 70;
   else if (t <= 504)  return 300 + (t - 424) * 100 / 80;
   else return 400 + (t - 504) * 100 / 96;
 }
