@@ -2,7 +2,7 @@
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
 #include <ESP8266WiFi.h>
-#include <ESP8266WiFiMulti.h>
+//#include <ESP8266WiFiMulti.h>
 #include <ESP8266HTTPClient.h>
 #include <PubSubClient.h>
 
@@ -35,12 +35,14 @@ static float hcho = 0;
 static unsigned int co2 = 0;
 static long lastMsg = 0;
 static bool isMQTTConnected = false;
+static unsigned int retry = 0;
 
 SoftwareSerial pmSerial(D7, D8);
 SoftwareSerial co2Serial(D5, D6);
 Adafruit_SSD1306 display(OLED_RESET);
 //ESP8266WiFiMulti WiFiMulti;
 
+void(* resetFunc) (void) = 0;
 WiFiClient espClient;
 PubSubClient client(espClient);
 
@@ -79,24 +81,34 @@ void setup_wifi() {
 }
 
 void reconnect() {
-	// Loop until we're reconnected
-	while (!client.connected()) {
-		Serial.print("Attempting MQTT connection...");
-		// Attempt to connect
-		// If you do not want to use a username and password, change next line to
-		// if (client.connect("ESP8266Client")) {
-		if (client.connect("AirMonitor1", mqtt_user, mqtt_password)) {
-			Serial.println("connected");
-			isMQTTConnected = true;
-		} else {
-			Serial.print("failed, rc=");
-			Serial.print(client.state());
-			Serial.println(" try again in few seconds");
-			isMQTTConnected = false;
-			readSensor();	  
+  // Loop until we're reconnected
+  while (!client.connected()) {
+    Serial.print("Attempting MQTT connection...");
+    // Attempt to connect
+    // If you do not want to use a username and password, change next line to
+    // if (client.connect("ESP8266Client")) {
+    if (client.connect("AirMonitor1", mqtt_user, mqtt_password)) {
+      Serial.println("connected");
+      isMQTTConnected = true;
+      retry = 0;
+    } else {
+      Serial.print("failed, rc=");
+      Serial.print(client.state());
+      Serial.print(" try again in few seconds, retry ");
+      Serial.println(retry);
+      isMQTTConnected = false;
+      readSensor(); 
+      retry++;  
       displayInfo(); 
-			// Wait 5 seconds before retrying
-			delay(5000);
+      if (retry > 3){
+        retry = 0;
+//        WiFi.disconnect(); 
+//        setup_wifi();
+          resetFunc();  //call reset
+      }
+      // Wait about 4 seconds before retrying
+      delay(3000);
+     // yield();
     }
   }
 }
@@ -141,7 +153,7 @@ void readPM(unsigned char ucData) {
   }
 }
 int aqipm25(int t){
-	if (t<= 12) return t * 50 / 12;
+	if (t <= 12) return t * 50 / 12;
 	else if (t <= 35)  return 50 + (t - 12) * 50 / 23;
 	else if (t <= 55)  return 100 + (t - 35) * 50 / 20;
 	else if (t <= 150)  return 150 + (t - 55) * 50 / 95;
@@ -184,8 +196,8 @@ void readSensor(){
 	delay(500);
 	while(pmSerial.available() > 0) {
 		readPM(pmSerial.read());
-		getaqi();
 	}
+  getaqi();
 	pmSerial.enableRx(false);
 	co2Serial.enableRx(true);
 	byte request[] = {0xFE, 0X44, 0X00, 0X08, 0X02, 0X9F, 0X25};
@@ -242,7 +254,8 @@ void displayInfo() {
   if(isMQTTConnected) {
     display.print("MQTT Connected");
   } else {
-    display.print("Re-connect to MQTT");
+    display.print("Reconnect to MQTT-");
+    display.print(retry);
   }
   
   display.display();
@@ -250,18 +263,18 @@ void displayInfo() {
 
 
 void loop() {
-
-	readSensor();
-	displayInfo();
-		
+	
 	if (!client.connected()) {
 		reconnect();
 	}
+
 	client.loop();
   
 	long now = millis();
 	if (now - lastMsg > 2000) {
-		lastMsg = now;            
+		lastMsg = now;  
+    readSensor();
+    displayInfo();         
 		client.publish(AQI_topic, String(aqi).c_str(), true);
 		client.publish(PM25_topic, String(pm25).c_str(), true);
 		client.publish(PM10_topic, String(pm10).c_str(), true);
